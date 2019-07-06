@@ -8,6 +8,8 @@ RF24 radio(7, 8);
 unsigned long t0;
 unsigned long t1;
 
+uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' }; //-----------------------RF24
+
 void setup()
 {
   pinMode(13,OUTPUT);
@@ -18,27 +20,26 @@ void setup()
   radio.begin();
   radio.openReadingPipe(1, 0xF0F0F0F0A1LL);
   radio.openReadingPipe(2, 0xF0F0F0F0A2LL);
-  
   radio.startListening();
-  t0=0;
+  //t0=0;
 }
 
 byte pipeNum=0; //variable to hold which reading pipe sent data
 
 void loop()
 {  
-  t1=millis();
+  //t1=millis();
   /*digitalWrite(13,HIGH);
   delay(500);
   digitalWrite(13,LOW);
   delay(500);
   */
-  if (t1-t0>10){
+  //if (t1-t0>10){
   if (radio.available(&pipeNum))
   {
     //char text[32] = {0};
     //int text[3];
-    typedef struct Value {
+    /*typedef struct Value {
               int x;
               int y;
               int z;
@@ -48,10 +49,13 @@ void loop()
             } Value;
 
             Value value;
-            
+            */
     //radio.read(&text, sizeof(text));
-    radio.read(&value, sizeof(value));
+    //radio.read(&value, sizeof(value));
+    radio.read(&teapotPacket, sizeof(teapotPacket));
     //int coordinates[] ={value.x,value.y};
+    Serial.write(teapotPacket, 14);
+    /*
     Serial.print(t1);
     Serial.print("\t");
     Serial.print(pipeNum);
@@ -68,7 +72,8 @@ void loop()
     Serial.print("\t");
     Serial.print(value.e2);
     Serial.println();
-    t0=t1;
+    */
+    //t0=t1;
     
     //Serial.println("X-acceleration");
     //int number=atol(text);
@@ -78,7 +83,7 @@ void loop()
     //delay(100);
    
   }
-  }
+  //}
 
   
   

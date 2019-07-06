@@ -1,11 +1,53 @@
+// I2C device class (I2Cdev) demonstration Arduino sketch for MPU6050 class using DMP (MotionApps v2.0)
+// 6/21/2012 by Jeff Rowberg <jeff@rowberg.net>
+// Updates should (hopefully) always be available at https://github.com/jrowberg/i2cdevlib
+//
+// Changelog:
+//      2016-04-18 - Eliminated a potential infinite loop
+//      2013-05-08 - added seamless Fastwire support
+//                 - added note about gyro calibration
+//      2012-06-21 - added note about Arduino 1.0.1 + Leonardo compatibility error
+//      2012-06-20 - improved FIFO overflow handling and simplified read process
+//      2012-06-19 - completely rearranged DMP initialization code and simplification
+//      2012-06-13 - pull gyro and accel data from FIFO packet instead of reading directly
+//      2012-06-09 - fix broken FIFO read sequence and change interrupt detection to RISING
+//      2012-06-05 - add gravity-compensated initial reference frame acceleration output
+//                 - add 3D math helper file to DMP6 example sketch
+//                 - add Euler output and Yaw/Pitch/Roll output formats
+//      2012-06-04 - remove accel offset clearing for better results (thanks Sungon Lee)
+//      2012-06-01 - fixed gyro sensitivity to be 2000 deg/sec instead of 250
+//      2012-05-30 - basic DMP initialization working
 
+/* ============================================
+I2Cdev device library code is placed under the MIT license
+Copyright (c) 2012 Jeff Rowberg
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+===============================================
+*/
 // Include libraries necessary for the radios
-#include <SPI.h>
-#include <nRF24L01.h>
-#include <RF24.h>
+#include <SPI.h>//-----------------------RF24
+#include <nRF24L01.h>//-----------------------RF24
+#include <RF24.h>//-----------------------RF24
 
-//set up name for serial communication of the radio
-RF24 radio(7, 8);
+//set up CE and CSN pins of the radio
+RF24 radio(7, 8);//-----------------------RF24
 
 // I2Cdev and MPU6050 must be installed as libraries, or else the .cpp/.h files
 // for both classes must be in the include path of your project
@@ -72,17 +114,20 @@ MPU6050 mpu;
 // compensated for orientation, us OUTPUT_READABLE_WORLDACCEL instead.
 //#define OUTPUT_READABLE_REALACCEL
 
-// We are using this output to obtain global coordinate acceleration
-//and euler angles (coordinate system irrelevant)
-#define OUTPUT_READABLE_WORLDACCEL_AND_GYRO
+// uncomment "OUTPUT_READABLE_WORLDACCEL" if you want to see acceleration
+// components with gravity removed and adjusted for the world frame of
+// reference (yaw is relative to initial orientation, since no magnetometer
+// is present in this case). Could be quite handy in some cases.
+//#define OUTPUT_READABLE_WORLDACCEL
 
 // uncomment "OUTPUT_TEAPOT" if you want output that matches the
 // format used for the InvenSense teapot demo
-//#define OUTPUT_TEAPOT
+#define OUTPUT_TEAPOT
 
 
 
-#define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
+#define INTERRUPT_PIN 2  // use pin 2 on Arduino Uno & most boards
+//#define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
 bool blinkState = false;
 
 // MPU control/status vars
@@ -126,7 +171,7 @@ void setup() {
     // join I2C bus (I2Cdev library doesn't do this automatically)
     #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
         Wire.begin();
-        TWBR = 12; // 400kHz I2C clock (200kHz if CPU is 8MHz). Comment this line if having compilation difficulties with TWBR.
+        Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
     #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
         Fastwire::setup(400, true);
     #endif
@@ -134,28 +179,25 @@ void setup() {
     // initialize serial communication
     // (115200 chosen because it is required for Teapot Demo output, but it's
     // really up to you depending on your project)
-    //Serial.begin(115200);
-    //while (!Serial); // wait for Leonardo enumeration, others continue immediately
+    Serial.begin(115200);
+    while (!Serial); // wait for Leonardo enumeration, others continue immediately
 
-    // NOTE: 8MHz or slower host processors, like the Teensy @ 3.3v or Ardunio
-    // Pro Mini running at 3.3v, cannot handle this baud rate reliably due to
+    // NOTE: 8MHz or slower host processors, like the Teensy @ 3.3V or Arduino
+    // Pro Mini running at 3.3V, cannot handle this baud rate reliably due to
     // the baud timing being too misaligned with processor ticks. You must use
     // 38400 or slower in these cases, or use some kind of external separate
     // crystal solution for the UART timer.
-
+    
     // Initialize radio communication
-    radio.begin();
-    radio.setRetries(15, 15);
-    radio.openWritingPipe(0xF0F0F0F0A1LL);
-  
-    radio.stopListening();
-
-    Serial.begin(115200);
-
+    radio.begin();//-----------------------RF24
+    radio.setRetries(15, 15);//-----------------------RF24
+    radio.openWritingPipe(0xF0F0F0F0A1LL);//-----------------------RF24
+    radio.stopListening();//-----------------------RF24
     
     // initialize device
     Serial.println(F("Initializing I2C devices..."));
     mpu.initialize();
+    pinMode(INTERRUPT_PIN, INPUT);
 
     // verify connection
     Serial.println(F("Testing device connections..."));
@@ -168,18 +210,15 @@ void setup() {
     while (!Serial.available());                 // wait for data
     while (Serial.available() && Serial.read()); // empty buffer again
     */
-
     // load and configure the DMP
     Serial.println(F("Initializing DMP..."));
     devStatus = mpu.dmpInitialize();
 
     // supply your own gyro offsets here, scaled for min sensitivity
-    mpu.setXGyroOffset(54);
-    mpu.setYGyroOffset(15);
-    mpu.setZGyroOffset(33);
-    mpu.setZAccelOffset(1613); // 1688 factory default for my test chip
-    mpu.setXAccelOffset(-4009);
-    mpu.setYAccelOffset(332);
+    mpu.setXGyroOffset(220);
+    mpu.setYGyroOffset(76);
+    mpu.setZGyroOffset(-85);
+    mpu.setZAccelOffset(1788); // 1688 factory default for my test chip
 
     // make sure it worked (returns 0 if so)
     if (devStatus == 0) {
@@ -188,8 +227,10 @@ void setup() {
         mpu.setDMPEnabled(true);
 
         // enable Arduino interrupt detection
-        Serial.println(F("Enabling interrupt detection (Arduino external interrupt 0)..."));
-        attachInterrupt(0, dmpDataReady, RISING);
+        Serial.print(F("Enabling interrupt detection (Arduino external interrupt "));
+        Serial.print(digitalPinToInterrupt(INTERRUPT_PIN));
+        Serial.println(F(")..."));
+        attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), dmpDataReady, RISING);
         mpuIntStatus = mpu.getIntStatus();
 
         // set our DMP Ready flag so the main loop() function knows it's okay to use it
@@ -209,8 +250,7 @@ void setup() {
     }
 
     // configure LED for output
-    pinMode(LED_PIN, OUTPUT);
-
+    //pinMode(LED_PIN, OUTPUT);
 }
 
 
@@ -225,6 +265,10 @@ void loop() {
 
     // wait for MPU interrupt or extra packet(s) available
     while (!mpuInterrupt && fifoCount < packetSize) {
+        if (mpuInterrupt && fifoCount < packetSize) {
+          // try to get out of the infinite loop 
+          fifoCount = mpu.getFIFOCount();
+        }  
         // other program behavior stuff here
         // .
         // .
@@ -235,7 +279,6 @@ void loop() {
         // .
         // .
         // .
-
     }
 
     // reset interrupt flag and get INT_STATUS byte
@@ -245,19 +288,17 @@ void loop() {
     // get current FIFO count
     fifoCount = mpu.getFIFOCount();
 
-
-
     // check for overflow (this should never happen unless our code is too inefficient)
-    if ((mpuIntStatus & 0x10) || fifoCount == 1024) {
+    if ((mpuIntStatus & _BV(MPU6050_INTERRUPT_FIFO_OFLOW_BIT)) || fifoCount >= 1024) {
         // reset so we can continue cleanly
         mpu.resetFIFO();
-        char fifo_text[]="FIFO overflow!";
-        radio.write(&fifo_text, sizeof(fifo_text));
+        fifoCount = mpu.getFIFOCount();
+        //char fifo_text[]="FIFO overflow!";//-----------------------RF24
+        //radio.write(&fifo_text, sizeof(fifo_text));//-----------------------RF24
         Serial.println(F("FIFO overflow!"));
 
     // otherwise, check for DMP data ready interrupt (this should happen frequently)
-    } else if (mpuIntStatus & 0x02) {
-                 
+    } else if (mpuIntStatus & _BV(MPU6050_INTERRUPT_DMP_INT_BIT)) {
         // wait for correct available data length, should be a VERY short wait
         while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
 
@@ -268,7 +309,6 @@ void loop() {
         // (this lets us immediately read more without waiting for an interrupt)
         fifoCount -= packetSize;
 
-/*
         #ifdef OUTPUT_READABLE_QUATERNION
             // display quaternion values in easy matrix form: w x y z
             mpu.dmpGetQuaternion(&q, fifoBuffer);
@@ -320,85 +360,23 @@ void loop() {
             Serial.print("\t");
             Serial.println(aaReal.z);
         #endif
-*/
-        #ifdef OUTPUT_READABLE_WORLDACCEL_AND_GYRO
+
+        #ifdef OUTPUT_READABLE_WORLDACCEL
             // display initial world-frame acceleration, adjusted to remove gravity
             // and rotated based on known orientation from quaternion
-
             mpu.dmpGetQuaternion(&q, fifoBuffer);
             mpu.dmpGetAccel(&aa, fifoBuffer);
             mpu.dmpGetGravity(&gravity, &q);
             mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
             mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
-            //Serial.print("aworld\t");
-            //Serial.print(aaWorld.x);
-            //Serial.print("\t");
-            //Serial.print(aaWorld.y);
-            //Serial.print("\t");
-            //Serial.print(aaWorld.z);
-            //radio.write(&aaWorld.z,sizeof(aaWorld.z));
-            //String x=String(aaWorld.x);
-            //const char*text=x.c_str();
-
-            /*
-            char x_text[]="X acceleration";
-            radio.write(&x_text, sizeof(x_text));
-            */
-            typedef struct Value {
-              int x;
-              int y;
-              int z;
-              int e0;
-              int e1;
-              int e2;   
-            } Value;
-
-            Value value;
-
-            value.x=aaWorld.x;
-            value.y=aaWorld.y;
-            value.z=aaWorld.z;
-
-            /*
-            float acceleration[3];
-            acceleration[0]=aaWorld.x;
-            acceleration[1]=aaWorld.y;
-            
-            char x_value[8];
-            char y_value[8];
-            
-            dtostrf(aaWorld.x,5,2,x_value);
-            dtostrf(aaWorld.y,5,2,y_value);
-            //char* coordinates[]={x_value,y_value};
-            //char* coordinates[]={x_value,y_value};
-            int coordinates[]={aaWorld.x,aaWorld.y};
-            //radio.write(&y_value, sizeof(y_value));
-            //radio.write(&coordinates, sizeof(coordinates));
-            */
-            
-            
-            //Serial.println(aaWorld);
-            mpu.dmpGetEuler(euler, &q);
-            
-            //Serial.print("euler\t");
-            int euler_0=euler[0] * 180/M_PI;
-            value.e0=euler_0;
-            //Serial.print("\t");
-            int euler_1=euler[1] * 180/M_PI;
-            value.e1=euler_1;
-            //Serial.print("\t");
-            int euler_2=euler[2] * 180/M_PI;
-            value.e2=euler_2;
-            //euler=(int[3])euler;
-            //int euler[]={1,2,3};
-            //Serial.write(euler*180/M_PI,3);
-            //delay(50);
-
-            radio.write(&value, sizeof(value));
+            Serial.print("aworld\t");
+            Serial.print(aaWorld.x);
+            Serial.print("\t");
+            Serial.print(aaWorld.y);
+            Serial.print("\t");
             Serial.println(aaWorld.z);
-            
         #endif
-    /*
+    
         #ifdef OUTPUT_TEAPOT
             // display quaternion values in InvenSense Teapot demo format:
             teapotPacket[2] = fifoBuffer[0];
@@ -409,12 +387,13 @@ void loop() {
             teapotPacket[7] = fifoBuffer[9];
             teapotPacket[8] = fifoBuffer[12];
             teapotPacket[9] = fifoBuffer[13];
+            radio.write(&teapotPacket, sizeof(teapotPacket));
             Serial.write(teapotPacket, 14);
             teapotPacket[11]++; // packetCount, loops at 0xFF on purpose
         #endif
-*/
+
         // blink LED to indicate activity
-        blinkState = !blinkState;
-        digitalWrite(LED_PIN, blinkState);
+        //blinkState = !blinkState;
+        //digitalWrite(LED_PIN, blinkState);
     }
 }
