@@ -9,7 +9,7 @@ unsigned long t0;
 unsigned long t1;
 
 uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' }; //-----------------------RF24
-
+float ypr[3];
 void setup()
 {
   pinMode(13,OUTPUT);
@@ -52,9 +52,15 @@ void loop()
             */
     //radio.read(&text, sizeof(text));
     //radio.read(&value, sizeof(value));
-    radio.read(&teapotPacket, sizeof(teapotPacket));
+    radio.read(&ypr, sizeof(ypr));
     //int coordinates[] ={value.x,value.y};
-    Serial.write(teapotPacket, 14);
+    Serial.print("ypr\t");
+    Serial.print(ypr[0] * 180/M_PI);
+    Serial.print("\t");
+    Serial.print(ypr[1] * 180/M_PI);
+    Serial.print("\t");
+    Serial.println(ypr[2] * 180/M_PI);
+    //Serial.write(teapotPacket, 14);
     /*
     Serial.print(t1);
     Serial.print("\t");

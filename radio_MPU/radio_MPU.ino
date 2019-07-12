@@ -105,7 +105,7 @@ MPU6050 mpu;
 // from the FIFO. Note this also requires gravity vector calculations.
 // Also note that yaw/pitch/roll angles suffer from gimbal lock (for
 // more info, see: http://en.wikipedia.org/wiki/Gimbal_lock)
-//#define OUTPUT_READABLE_YAWPITCHROLL
+#define OUTPUT_READABLE_YAWPITCHROLL
 
 // uncomment "OUTPUT_READABLE_REALACCEL" if you want to see acceleration
 // components with gravity removed. This acceleration reference frame is
@@ -122,7 +122,7 @@ MPU6050 mpu;
 
 // uncomment "OUTPUT_TEAPOT" if you want output that matches the
 // format used for the InvenSense teapot demo
-#define OUTPUT_TEAPOT
+//#define OUTPUT_TEAPOT
 
 
 
@@ -150,7 +150,19 @@ float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gra
 // packet structure for InvenSense teapot demo
 uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
 
+//connection Flag
+bool isConnected = false;
 
+//LED Section
+int redLed = 6;
+int greenLed = 5;
+int blueLed = 3;
+int redBrightness = 0;
+int greenBrightness = 0;
+int blueBrightness = 0;
+bool redReverse = false;
+bool greenReverse = false;
+bool blueReverse = false;
 
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
@@ -249,6 +261,10 @@ void setup() {
         Serial.println(F(")"));
     }
 
+    pinMode(redLed, OUTPUT);
+    pinMode(greenLed, OUTPUT);
+    pinMode(blueLed, OUTPUT);
+    
     // configure LED for output
     //pinMode(LED_PIN, OUTPUT);
 }
@@ -260,6 +276,24 @@ void setup() {
 // ================================================================
 
 void loop() {
+
+    if(!isConnected)
+    {
+      if(blueBrightness > 150) blueReverse = true;
+      if(blueBrightness < 5) blueReverse = false;
+      if(blueReverse) blueBrightness -= 5;
+      else blueBrightness += 5;
+      digitalWrite(redLed, LOW);
+      digitalWrite(greenLed, LOW);
+      analogWrite(blueLed, blueBrightness);
+      isConnected = radio.write(&ypr, sizeof(ypr));
+      return;
+    }
+    else
+    {
+      digitalWrite(blueLed, LOW);
+      digitalWrite(redLed, HIGH);
+    }
     // if programming failed, don't try to do anything
     if (!dmpReady) return;
 
@@ -345,6 +379,7 @@ void loop() {
             Serial.print(ypr[1] * 180/M_PI);
             Serial.print("\t");
             Serial.println(ypr[2] * 180/M_PI);
+            isConnected = radio.write(&ypr, sizeof(ypr));
         #endif
 
         #ifdef OUTPUT_READABLE_REALACCEL
@@ -387,7 +422,7 @@ void loop() {
             teapotPacket[7] = fifoBuffer[9];
             teapotPacket[8] = fifoBuffer[12];
             teapotPacket[9] = fifoBuffer[13];
-            radio.write(&teapotPacket, sizeof(teapotPacket));
+            //radio.write(&teapotPacket, sizeof(teapotPacket));
             Serial.write(teapotPacket, 14);
             teapotPacket[11]++; // packetCount, loops at 0xFF on purpose
         #endif
