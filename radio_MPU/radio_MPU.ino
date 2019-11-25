@@ -144,7 +144,7 @@ VectorInt16 aa;         // [x, y, z]            accel sensor measurements
 VectorInt16 aaReal;     // [x, y, z]            gravity-free accel sensor measurements
 VectorInt16 aaWorld;    // [x, y, z]            world-frame accel sensor measurements
 VectorFloat gravity;    // [x, y, z]            gravity vector
-float euler[3];         // [psi, theta, phi]    Euler angle container
+float packet[4];         // [psi, theta, phi]    Euler angle container
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 
 // packet structure for InvenSense teapot demo
@@ -359,14 +359,17 @@ void loop() {
         #ifdef OUTPUT_READABLE_EULER
             // display Euler angles in degrees
             mpu.dmpGetQuaternion(&q, fifoBuffer);
-            mpu.dmpGetEuler(euler, &q);
-            Serial.print("euler\t");
-            Serial.print(euler[0] * 180/M_PI);
+            mpu.dmpGetEuler(packet, &q);
+            packet[3] = 100;
+            Serial.print("packet\t");
+            Serial.print(packet[0] * 180/M_PI);
             Serial.print("\t");
-            Serial.print(euler[1] * 180/M_PI);
+            Serial.print(packet[1] * 180/M_PI);
             Serial.print("\t");
-            Serial.println(euler[2] * 180/M_PI);
-            isConnected = radio.write(&euler, sizeof(euler));
+            Serial.print(packet[2] * 180/M_PI);
+            Serial.print("\t");
+            Serial.println(packet[3]);
+            isConnected = radio.write(&packet, sizeof(packet));
         #endif
 
         #ifdef OUTPUT_READABLE_YAWPITCHROLL
